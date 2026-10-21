@@ -1,0 +1,122 @@
+# AFTx07 LIN controller register map -- normative source: LIN_Controller_Spec_v0.5.md Section 7
+# Access types: RW, RO, W1C (write 1 to clear), WS (write-1 strobe, reads 0)
+# All registers 32-bit, word aligned. Reserved bits read 0, writes ignored.
+# Write protection (LIN-REG-04): while STATUS.BUSY=1, writes to BAUD, PID, TXDATA0/1 and
+#   CTRL bits other than EN are ignored. STATUS and IRQ_EN always writable.
+
+block: lin
+version: 0.5
+data_width: 32
+window_bytes: 0x40          # NWORDS = 16
+instances:
+  - name: LIN0
+    base: 0x80007000
+    apb_index: 9
+    plic_source: 48
+    plic_id: 49            # PLIC_ID(48)
+    iomux_fsel1_bits: {tx: "17:16", rx: "19:18", tx_en: "21:20"}   # value 1 = function 1
+    builds: all
+  - name: LIN1
+    base: 0x80008000
+    apb_index: 10
+    plic_source: 49
+    plic_id: 50            # PLIC_ID(49)
+    shared_bus_monitor_fsel1_bits: "23:22"   # pin 27
+    builds: LIN_DEMO only
+parameters:
+  DEFAULT_DIV: {fpga_quartus: 163, asic_default: 521}
+
+registers:
+  - name: CTRL
+    offset: 0x00
+    reset: 0x00000000
+    fields:
+      - {name: EN,      bits: "0",   access: RW, reset: 0, writable_while_busy: true,
+         desc: "Enable. Writing 0 while BUSY aborts the frame; no flag set."}
+      - {name: MODE,    bits: "1",   access: RW, reset: 0, desc: "0 = master, 1 = slave"}
+      - {name: START,   bits: "2",   access: WS, reset: 0,
+         desc: "Master only. Starts a frame if (after this write) EN=1, MODE=0, BUSY=0; else ignored."}
+      - {name: TX_RESP, bits: "3",   access: RW, reset: 0, desc: "1 = this node transmits response; 0 = receives"}
+      - {name: DLEN,    bits: "6:4", access: RW, reset: 0, desc: "Data bytes minus 1 (N = DLEN + 1)"}
+      - {name: RSVD,    bits: "31:7", access: RO, reset: 0}
+
+  - name: STATUS
+    offset: 0x04
+    reset: 0x00000000
+    notes: "Bits 7:1 sticky; W1C via byte lane 0; hardware set wins over simultaneous clear."
+    fields:
+      - {name: BUSY,      bits: "0", access: RO,  reset: 0, desc: "FSM not in IDLE"}
+      - {name: DONE,      bits: "1", access: W1C, reset: 0, desc: "Frame completed successfully"}
+      - {name: CKSUM_ERR, bits: "2", access: W1C, reset: 0, desc: "Received checksum mismatch"}
+      - {name: TIMEOUT,   bits: "3", access: W1C, reset: 0, desc: "Response or slave header timer expired"}
+      - {name: BIT_ERR,   bits: "4", access: W1C, reset: 0, desc: "Readback mismatch while driving"}
+      - {name: FRAME_ERR, bits: "5", access: W1C, reset: 0, desc: "Stop bit 0 on received byte (not sync)"}
+      - {name: SYNC_ERR,  bits: "6", access: W1C, reset: 0, desc: "Slave: sync != 0x55 or bad stop"}
+      - {name: PID_ERR,   bits: "7", access: W1C, reset: 0, desc: "Slave: received PID parity mismatch"}
+      - {name: RSVD,      bits: "31:8", access: RO, reset: 0}
+
+  - name: BAUD
+    offset: 0x08
+    reset: DEFAULT_DIV
+    fields:
+      - {name: DIV,  bits: "15:0",  access: RW, reset: DEFAULT_DIV,
+         desc: "PCLK cycles per bit; values < 16 stored as 16"}
+      - {name: RSVD, bits: "31:16", access: RO, reset: 0}
+
+  - name: PID
+    offset: 0x0C
+    reset: 0x00000080
+    fields:
+      - {name: ID,         bits: "5:0",  access: RW, reset: 0, desc: "Master: ID sent. Slave: ID accepted."}
+      - {name: P0,         bits: "6",    access: RO, reset: 0, desc: "ID0^ID1^ID2^ID4"}
+      - {name: P1,         bits: "7",    access: RO, reset: 1, desc: "~(ID1^ID3^ID4^ID5)"}
+      - {name: CKSUM_TYPE, bits: "8",    access: RW, reset: 0, desc: "0 classic, 1 enhanced"}
+      - {name: RSVD,       bits: "31:9", access: RO, reset: 0}
+
+  - name: TXDATA0
+    offset: 0x10
+    reset: 0x00000000
+    fields:
+      - {name: BYTE0, bits: "7:0",   access: RW, reset: 0}
+      - {name: BYTE1, bits: "15:8",  access: RW, reset: 0}
+      - {name: BYTE2, bits: "23:16", access: RW, reset: 0}
+      - {name: BYTE3, bits: "31:24", access: RW, reset: 0}
+
+  - name: TXDATA1
+    offset: 0x14
+    reset: 0x00000000
+    fields:
+      - {name: BYTE4, bits: "7:0",   access: RW, reset: 0}
+      - {name: BYTE5, bits: "15:8",  access: RW, reset: 0}
+      - {name: BYTE6, bits: "23:16", access: RW, reset: 0}
+      - {name: BYTE7, bits: "31:24", access: RW, reset: 0}
+
+  - name: RXDATA0
+    offset: 0x18
+    reset: 0x00000000
+    notes: "Cleared on DATA entry when TX_RESP=0; byte k written when it completes."
+    fields:
+      - {name: BYTE0, bits: "7:0",   access: RO, reset: 0}
+      - {name: BYTE1, bits: "15:8",  access: RO, reset: 0}
+      - {name: BYTE2, bits: "23:16", access: RO, reset: 0}
+      - {name: BYTE3, bits: "31:24", access: RO, reset: 0}
+
+  - name: RXDATA1
+    offset: 0x1C
+    reset: 0x00000000
+    fields:
+      - {name: BYTE4, bits: "7:0",   access: RO, reset: 0}
+      - {name: BYTE5, bits: "15:8",  access: RO, reset: 0}
+      - {name: BYTE6, bits: "23:16", access: RO, reset: 0}
+      - {name: BYTE7, bits: "31:24", access: RO, reset: 0}
+
+  - name: IRQ_EN
+    offset: 0x20
+    reset: 0x00000000
+    notes: "irq = registered |(STATUS[7:1] & IRQ_EN[7:1])"
+    fields:
+      - {name: RSVD0, bits: "0",    access: RO, reset: 0}
+      - {name: EN,    bits: "7:1",  access: RW, reset: 0}
+      - {name: RSVD,  bits: "31:8", access: RO, reset: 0}
+
+reserved_offsets: "0x24-0x3C read 0, writes ignored (stretch: multi-ID filter table)"

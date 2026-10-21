@@ -1,0 +1,4 @@
+lin/tb/checkpoint/out/
+obj_dir/
+*.vcd
+*.fst
