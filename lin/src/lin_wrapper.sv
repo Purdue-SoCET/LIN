@@ -133,9 +133,6 @@ module lin_wrapper #(
         .sample_h_plus_q(sample_h_plus_q)
     );
 
-    logic tx_out;
-    assign linif.tx = tx_out;
-
     lin_tx u_tx (
         .CLK(CLK),
         .nRST(nRST),
@@ -149,8 +146,8 @@ module lin_wrapper #(
         .mode(tx_mode),
         .data_in(tx_byte),
         .rx_sync(rx_sync),
-        .abort(~ctrl[0] | bit_err),
-        .tx_out(tx_out),
+        .abort(1'b0),
+        .tx_out(linif.tx),
         .done(tx_done),
         .bit_err(bit_err)
     );
@@ -194,8 +191,9 @@ module lin_wrapper #(
     );
 
     // status and irq_en are exposed purely via the bus; pid_out is output-only from lin_pid
+    // Reason: status and irq_en are exposed purely via the bus; pid_out is output-only from lin_pid
     /* verilator lint_off UNUSEDSIGNAL */
-    logic _unused_ports = &{1'b0, status, irq_en, pid_out};
+    wire _unused_ports = &{1'b0, status, irq_en, pid_out};
     /* verilator lint_on UNUSEDSIGNAL */
 
 endmodule

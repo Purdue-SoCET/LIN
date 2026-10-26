@@ -75,9 +75,6 @@ module lin_tx (
             current_mode <= 2'd0;
             shift_reg <= 8'd0;
             done <= 1'b0;
-        end else if (abort) begin
-            is_active <= 1'b0;
-            done <= 1'b0;
         end else begin
             done <= 1'b0;
             if (start) begin
@@ -109,7 +106,8 @@ module lin_tx (
     end
 
     // bit_start from baud generator is not used because bit_end governs bit timing
+    // Reason: bit_start from baud generator is not used because bit_end governs bit timing
     /* verilator lint_off UNUSEDSIGNAL */
-    logic _unused_ports = &{1'b0, bit_start};
+    wire _unused_ports = &{1'b0, bit_start};
     /* verilator lint_on UNUSEDSIGNAL */
 endmodule

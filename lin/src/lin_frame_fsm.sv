@@ -80,18 +80,11 @@ module lin_frame_fsm (
     logic data_entry;
     assign data_entry = (state != DATA && next_state == DATA);
 
-    logic resp_space_done;
-    always_ff @(posedge CLK, negedge nRST) begin
-        if (!nRST) resp_space_done <= 1'b0;
-        else if (data_entry) resp_space_done <= 1'b0;
-        else if (state == DATA && tx_resp && tx_done && !resp_space_done) resp_space_done <= 1'b1;
-    end
-
     always_ff @(posedge CLK, negedge nRST) begin
         if (!nRST) byte_counter <= '0;
         else if (data_entry) byte_counter <= '0;
         else if (state == DATA) begin
-            if ((tx_resp == 1'b1 && tx_done && resp_space_done) || (tx_resp == 1'b0 && rx_done))
+            if ((tx_resp == 1'b1 && tx_done) || (tx_resp == 1'b0 && rx_done))
                 byte_counter <= byte_counter + 1;
         end
     end
@@ -172,7 +165,7 @@ module lin_frame_fsm (
                 end
                 DATA: begin
                     if (tx_resp) begin
-                        if (tx_done && resp_space_done) begin
+                        if (tx_done) begin
                             if (byte_counter == (dlen_bytes - 1)) next_state = CKSUM;
                         end
                     end else begin
@@ -276,27 +269,21 @@ module lin_frame_fsm (
                 end
             end
             DATA: begin
-                if (tx_resp) begin
-                    if (tx_done && !resp_space_done) begin
+                if (tx_resp && state == DATA) begin
+                    if ((byte_counter == 0 && tx_done && tx_mode == 2'd3) || (tx_done && tx_mode == 2'd0 && byte_counter < dlen_bytes)) begin
                         tx_mode = 2'd0;
                         tx_start = 1'b1;
-                        tx_byte = tx_data0[7:0];
-                    end else if (tx_done && resp_space_done) begin
-                        if (byte_counter < (dlen_bytes - 1)) begin
-                            tx_mode = 2'd0;
-                            tx_start = 1'b1;
-                            if ((byte_counter + 1) < 4) tx_byte = tx_data0[((byte_counter + 1) & 3)*8 +: 8];
-                            else if ((byte_counter + 1) < 8) tx_byte = tx_data1[((byte_counter - 3) & 3)*8 +: 8];
-                            else tx_byte = 8'd0;
-                        end else begin
-                            tx_mode = 2'd0;
-                            tx_start = 1'b1;
-                            tx_byte = cksum_out;
-                        end
+                        if (byte_counter < 4) tx_byte = tx_data0[byte_counter*8 +: 8];
+                        else                  tx_byte = tx_data1[(byte_counter-4)*8 +: 8];
                     end
                 end
             end
             CKSUM: begin
+                if (tx_resp && tx_done && state == DATA && next_state == CKSUM) begin
+                    tx_mode = 2'd0;
+                    tx_start = 1'b1;
+                    tx_byte = cksum_out; // Mux cksum out!
+                end
             end
             default: ;
         endcase
@@ -316,7 +303,7 @@ module lin_frame_fsm (
     assign cksum_load_seed = pid_to_data;
     assign cksum_seed = pid[8] ? pid[7:0] : 8'd0; // Enhanced = PID, Classic = 0
     assign cksum_data = tx_resp ? tx_byte : rx_byte;
-    assign cksum_accumulate = (state == DATA) && ((tx_resp && tx_start && tx_mode == 2'd0 && next_state != CKSUM) || (!tx_resp && rx_done && rx_stop_bit));
+    assign cksum_accumulate = (state == DATA) && ((tx_resp && tx_start && tx_mode == 2'd0) || (!tx_resp && rx_done && rx_stop_bit));
     
     // RXDATA integration
     assign rx_data_clr = data_entry && !tx_resp;
@@ -329,7 +316,8 @@ module lin_frame_fsm (
     end
     
 
+    // Reason: FSM only uses ctrl[6:3] and ctrl[1:0]; baud_div goes to baud gen; pid is 8 bits; bit_start is redundant
     /* verilator lint_off UNUSEDSIGNAL */
-    logic _unused_ports = &{1'b0, ctrl, baud_div, pid, bit_start};
+    wire _unused_ports = &{1'b0, ctrl[31:7], ctrl[2], baud_div, pid[31:9], bit_start};
     /* verilator lint_on UNUSEDSIGNAL */
 endmodule
